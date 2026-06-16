@@ -3,6 +3,8 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>XtraMagical - Renommage IA & Générateur d'images</title>
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.21.0"></script>
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd@2.2.3"></script>
 <style>
     :root {
         --bg-primary: #1c1917;
@@ -335,7 +337,7 @@
         <h2>Renommage de photos en lot</h2>
 
         <div class="hint">
-            💡 <strong>Démo :</strong> glissez des images, elles sont traitées côté client. L'IA simule l'analyse Google Vision et la normalisation LLM.
+            💡 <strong>IA réelle :</strong> détection d'objets via TensorFlow.js + COCO-SSD (dans votre navigateur). Couleurs extraites du canvas. Génération via Pollinations.ai.
         </div>
 
         <div class="form-group">
@@ -461,18 +463,47 @@ const statsEl = document.getElementById('stats');
 const logEl = document.getElementById('log');
 
 let uploadedFiles = [];
-const FAKE_BRANDS = ['Nike', 'Adidas', 'Apple', 'Sony', 'Canon', 'IKEA', 'Samsung'];
-const FAKE_MODELS = ['Pro X', 'Air Max', 'Ultra', 'Mk IV', 'Studio 2', 'Elite'];
-const FAKE_COLORS = ['rouge', 'noir', 'bleu', 'blanc', 'vert', 'gris'];
-const FAKE_CONTEXTS = ['produit', 'portrait', 'paysage', 'studio', 'exterieur'];
+let visionModel = null;
 
-function simulateVision(filename) {
-    return {
-        brand: FAKE_BRANDS[Math.floor(Math.random() * FAKE_BRANDS.length)],
-        model: FAKE_MODELS[Math.floor(Math.random() * FAKE_MODELS.length)],
-        color: FAKE_COLORS[Math.floor(Math.random() * FAKE_COLORS.length)],
-        context: FAKE_CONTEXTS[Math.floor(Math.random() * FAKE_CONTEXTS.length)]
-    };
+(async () => {
+    try {
+        visionModel = await cocoSsd.load();
+        log(logEl, 'Modèle COCO-SSD chargé (détection d\'objets)', 'ok');
+    } catch (e) {
+        log(logEl, 'Erreur chargement TF.js: ' + e.message, 'warn');
+    }
+})();
+
+const COLOR_MAP = [
+    { name: 'rouge', r: 200, g: 50, b: 50 },
+    { name: 'vert', r: 50, g: 180, b: 50 },
+    { name: 'bleu', r: 50, g: 100, b: 220 },
+    { name: 'noir', r: 30, g: 30, b: 30 },
+    { name: 'blanc', r: 230, g: 230, b: 230 },
+    { name: 'jaune', r: 230, g: 220, b: 50 },
+    { name: 'gris', r: 140, g: 140, b: 140 },
+];
+
+function closestColor(r, g, b) {
+    let min = Infinity, name = 'inconnue';
+    for (const c of COLOR_MAP) {
+        const d = (c.r - r) ** 2 + (c.g - g) ** 2 + (c.b - b) ** 2;
+        if (d < min) { min = d; name = c.name; }
+    }
+    return name;
+}
+
+async function extractDominantColor(img) {
+    const c = document.createElement('canvas');
+    c.width = 50; c.height = 50;
+    const ctx = c.getContext('2d');
+    ctx.drawImage(img, 0, 0, 50, 50);
+    const data = ctx.getImageData(0, 0, 50, 50).data;
+    let tr = 0, tg = 0, tb = 0, count = 0;
+    for (let i = 0; i < data.length; i += 16) {
+        tr += data[i]; tg += data[i + 1]; tb += data[i + 2]; count++;
+    }
+    return closestColor(tr / count, tg / count, tb / count);
 }
 
 dropZone.addEventListener('click', () => fileInput.click());
@@ -540,21 +571,44 @@ processBtn.addEventListener('click', async () => {
         const pb = document.getElementById('pb-' + item.id);
 
         log(logEl, `Analyse de ${item.file.name}...`, 'info');
-        await new Promise(r => setTimeout(r, 400));
 
-        const meta = simulateVision(item.file.name);
+        const img = new Image();
+        await new Promise(r => { img.onload = r; img.src = item.dataUrl; });
+
+        let objects = [];
+        let colorName = 'inconnue';
+
+        try {
+            if (visionModel) {
+                const predictions = await visionModel.detect(img);
+                objects = predictions.map(p => p.class);
+                log(logEl, `Objets détectés: ${objects.join(', ')}`, 'ok');
+            }
+            colorName = await extractDominantColor(img);
+            log(logEl, `Couleur dominante: ${colorName}`, 'ok');
+        } catch (e) {
+            log(logEl, `Erreur analyse: ${e.message}`, 'warn');
+        }
+
+        const meta = {
+            brand: objects[0] || 'objet',
+            model: 'v1',
+            color: colorName,
+            context: 'produit',
+        };
+
         const ext = item.file.name.split('.').pop();
         const newName = pattern
             .replace('{marque}', meta.brand)
             .replace('{modele}', meta.model)
             .replace('{couleur}', meta.color)
             .replace('{contexte}', meta.context)
-            .toLowerCase() + '.' + ext;
+            .toLowerCase().replace(/[^a-z0-9-]/g, '') + '.' + ext;
         item.newName = newName;
 
-        for (let p = 0; p <= 100; p += 20) {
+        for (let p = 0; p <= 100; p += 25) {
             if (pb) pb.style.width = p + '%';
-            await new Promise(r => setTimeout(r, 50));
+            await new Promise(r => setTimeout(r, 30));
         }
 
         item.status = 'completed';
@@ -596,49 +650,59 @@ const ENHANCERS = {
     '3d-render': '3D render, octane render, ray tracing, subsurface scattering, physically based rendering, unreal engine 5, hyper detailed, studio lighting'
 };
 
-enhanceBtn.addEventListener('click', () => {
+enhanceBtn.addEventListener('click', async () => {
     const prompt = simplePrompt.value.trim();
     if (!prompt) { alert('Saisissez un prompt'); return; }
 
-    log(logGenEl, `Prompt reçu: "${prompt}"`, 'info');
+    log(logGenEl, `Prompt: "${prompt}"`, 'info');
     promptOriginalEl.textContent = prompt;
     enhanceBtn.disabled = true;
-    enhanceBtn.textContent = 'Traitement...';
+    enhanceBtn.textContent = 'Appel Pollinations.ai...';
 
-    setTimeout(() => {
-        const enhanced = `${prompt}, ${ENHANCERS[promptStyle.value]}`;
+    try {
+        const stylePrompt = ENHANCERS[promptStyle.value];
+        const fullPrompt = `Enhance this image prompt with photography terms: "${prompt}". Add: ${stylePrompt}. Return only the enhanced prompt.`;
+        const res = await fetch(`https://text.pollinations.ai/${encodeURIComponent(fullPrompt)}`);
+        let enhanced = await res.text();
+        enhanced = enhanced.replace(/^["']|["']$/g, '').trim();
+        if (!enhanced) enhanced = `${prompt}, ${stylePrompt}`;
+
         promptEnhancedEl.textContent = enhanced;
         finalPromptEl.value = enhanced;
         generateBtn.disabled = false;
-        enhanceBtn.disabled = false;
-        enhanceBtn.textContent = 'Améliorer le prompt (LLM)';
-        log(logGenEl, 'Prompt enrichi généré', 'ok');
-    }, 900);
+        log(logGenEl, 'Prompt enrichi via Pollinations.ai', 'ok');
+    } catch (e) {
+        const fallback = `${prompt}, ${ENHANCERS[promptStyle.value]}`;
+        promptEnhancedEl.textContent = fallback;
+        finalPromptEl.value = fallback;
+        generateBtn.disabled = false;
+        log(logGenEl, `Fallback local: ${e.message}`, 'warn');
+    }
+
+    enhanceBtn.disabled = false;
+    enhanceBtn.textContent = 'Améliorer le prompt (LLM)';
 });
 
-generateBtn.addEventListener('click', () => {
+generateBtn.addEventListener('click', async () => {
     const finalPrompt = finalPromptEl.value.trim();
     if (!finalPrompt) return;
 
-    log(logGenEl, 'Génération de l\'image...', 'info');
+    log(logGenEl, 'Génération via Pollinations.ai...', 'info');
     generateBtn.disabled = true;
-    generateBtn.textContent = 'Génération en cours...';
+    generateBtn.textContent = 'Appel API...';
     imageResultEl.innerHTML = '<p style="color:var(--text-secondary);margin-top:20px;">Génération en cours...</p>';
 
-    setTimeout(() => {
-        const seed = Math.floor(Math.random() * 1000);
-        const imgUrl = `https://picsum.photos/seed/${seed}/1024/1024`;
-        imageResultEl.innerHTML = `
-            <img src="${imgUrl}" alt="Generated">
-            <p style="margin-top:15px;color:var(--text-secondary);font-size:0.9em;">
-                Image 1024x1024 générée (demo)
-            </p>
-            <a href="${imgUrl}" target="_blank" style="display:inline-block;margin-top:10px;color:var(--accent-gold);text-decoration:none;font-weight:600;">Voir l'image</a>
-        `;
-        generateBtn.disabled = false;
-        generateBtn.textContent = 'Générer l\'image';
-        log(logGenEl, 'Image générée avec succès', 'ok');
-    }, 2500);
+    const imgUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(finalPrompt)}?width=1024&height=1024&seed=${Math.floor(Math.random() * 9999)}&nologo=true`;
+    imageResultEl.innerHTML = `
+        <img src="${imgUrl}" alt="Generated" onerror="this.parentElement.innerHTML+='<p style=color:red;margin-top:10px;>Erreur chargement image</p>'">
+        <p style="margin-top:15px;color:var(--text-secondary);font-size:0.9em;">
+            Image générée par Pollinations.ai
+        </p>
+        <a href="${imgUrl}" target="_blank" style="display:inline-block;margin-top:10px;color:var(--accent-gold);text-decoration:none;font-weight:600;">Voir l'image</a>
+    `;
+    generateBtn.disabled = false;
+    generateBtn.textContent = 'Générer l\'image';
+    log(logGenEl, 'Image générée via Pollinations.ai', 'ok');
 });
 
 log(logEl, 'Système prêt. Commencez par uploader des images.', 'ok');
