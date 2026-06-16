@@ -5,6 +5,8 @@
 <title>XtraMagical - Renommage IA & Générateur d'images</title>
 <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.21.0" onerror="window.TF_FAILED=true"></script>
 <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd@2.2.3" onerror="window.TF_FAILED=true"></script>
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/mobilenet@2.1.1/dist/mobilenet.min.js" onerror="window.TF_FAILED=true"></script>
+<script src="https://cdn.jsdelivr.net/npm/tesseract.js@4.1.1/dist/tesseract.min.js" onerror="window.TF_FAILED=true"></script>
 <style>
     :root {
         --bg-primary: #1c1917;
@@ -545,21 +547,26 @@ function closestColor(r, g, b) {
 async function extractDominantColor(img) {
     try {
         const c = document.createElement('canvas');
-        c.width = 100; c.height = 100;
+        c.width = 200; c.height = 200;
         const ctx = c.getContext('2d');
-        ctx.drawImage(img, 0, 0, 100, 100);
-        const data = ctx.getImageData(0, 0, 100, 100).data;
+        ctx.drawImage(img, 0, 0, 200, 200);
+        const data = ctx.getImageData(0, 0, 200, 200).data;
         const buckets = {};
-        for (let i = 0; i < data.length; i += 8) {
-            const r = Math.round(data[i] / 60) * 60;
-            const g = Math.round(data[i + 1] / 60) * 60;
-            const b = Math.round(data[i + 2] / 60) * 60;
-            const key = r + ',' + g + ',' + b;
-            buckets[key] = (buckets[key] || 0) + 1;
+        for (let i = 0; i < data.length; i += 4) {
+            const r = data[i], g = data[i + 1], b = data[i + 2];
+            const brightness = r + g + b;
+            if (brightness < 60 || brightness > 720) continue;
+            const saturation = Math.max(r, g, b) - Math.min(r, g, b);
+            if (saturation < 15) continue;
+            const qr = Math.round(r / 40) * 40;
+            const qg = Math.round(g / 40) * 40;
+            const qb = Math.round(b / 40) * 40;
+            const key = qr + ',' + qg + ',' + qb;
+            buckets[key] = (buckets[key] || 0) + 1 + saturation / 255;
         }
-        let maxCount = 0, bestKey = '0,0,0';
+        let bestScore = 0, bestKey = '120,120,120';
         for (const key in buckets) {
-            if (buckets[key] > maxCount) { maxCount = buckets[key]; bestKey = key; }
+            if (buckets[key] > bestScore) { bestScore = buckets[key]; bestKey = key; }
         }
         const parts = bestKey.split(',');
         return closestColor(+parts[0], +parts[1], +parts[2]);
