@@ -341,7 +341,7 @@
         <h2>Renommage de photos en lot</h2>
 
         <div class="hint">
-            💡 <strong>IA réelle :</strong> détection d'objets via TensorFlow.js + COCO-SSD. Chaque image est analysée individuellement. Noms uniques garantis (anti-collision).
+            💡 <strong>IA triple :</strong> COCO-SSD (90 objets) + MobileNet (1000 classes) + Tesseract OCR (marques/texte). Chaque image analysée par les 3 modèles. Noms uniques garantis.
         </div>
 
         <div class="form-group">
@@ -467,20 +467,36 @@ const statsEl = document.getElementById('stats');
 const logEl = document.getElementById('log');
 
 let uploadedFiles = [];
-let visionModel = null;
+let models = { cocossd: null, mobilenet: null };
+let tesseractWorker = null;
 let degraded = false;
 
 (async () => {
     const banner = document.getElementById('statusBanner');
+    const errors = [];
+
     try {
         const timeout = new Promise((_, rej) => setTimeout(() => rej(new Error('Timeout')), 15000));
-        const model = await Promise.race([cocoSsd.load(), timeout]);
-        visionModel = model;
-        log(logEl, 'Modèle COCO-SSD chargé (' + model.modelUrl + ')', 'ok');
-    } catch (e) {
+        models.cocossd = await Promise.race([cocoSsd.load(), timeout]);
+        log(logEl, '✓ COCO-SSD chargé (90 objets)', 'ok');
+    } catch (e) { errors.push('COCO-SSD: ' + e.message); }
+
+    try {
+        const timeout = new Promise((_, rej) => setTimeout(() => rej(new Error('Timeout')), 15000));
+        models.mobilenet = await Promise.race([mobilenet.load(), timeout]);
+        log(logEl, '✓ MobileNet chargé (1000 classes)', 'ok');
+    } catch (e) { errors.push('MobileNet: ' + e.message); }
+
+    try {
+        const timeout = new Promise((_, rej) => setTimeout(() => rej(new Error('Timeout')), 25000));
+        tesseractWorker = await Promise.race([Tesseract.createWorker('fra+eng'), timeout]);
+        log(logEl, '✓ Tesseract OCR prêt (texte/marques)', 'ok');
+    } catch (e) { errors.push('Tesseract: ' + e.message); }
+
+    if (errors.length > 0) {
         degraded = true;
         banner.style.display = 'block';
-        log(logEl, 'TF.js non disponible, mode dégradé: ' + e.message, 'warn');
+        log(logEl, '⚠ Modules défaillants: ' + errors.join(' | '), 'warn');
     }
 })();
 
@@ -616,42 +632,74 @@ processBtn.addEventListener('click', async () => {
         await new Promise(r => { img.onload = r; img.src = item.dataUrl; });
 
         let objects = [];
+        let classes = [];
+        let ocrText = '';
         let colorName = 'inconnue';
 
         try {
-            if (visionModel) {
-                const predictions = await visionModel.detect(img);
+            if (models.cocossd) {
+                const predictions = await models.cocossd.detect(img);
                 objects = predictions.map(p => p.class);
-                log(logEl, `  → Objets détectés: ${objects.join(', ')}`, 'ok');
+                log(logEl, `  → Objets: ${objects.join(', ') || '(aucun)'}`, 'ok');
             } else {
                 objects = getFallbackObjects(idx);
-                log(logEl, `  → Objets (mode dégradé): ${objects.join(', ')}`, 'warn');
+                log(logEl, `  → Objets (dégradé): ${objects.join(', ')}`, 'warn');
             }
+
+            if (models.mobilenet) {
+                const predictions = await models.mobilenet.classify(img);
+                classes = predictions.map(p => p.className);
+                log(logEl, `  → Classification: ${classes.slice(0, 3).join(', ')}`, 'ok');
+            }
+
+            if (tesseractWorker) {
+                try {
+                    const ocrTimeout = new Promise((_, rej) => setTimeout(() => rej(new Error('Timeout')), 12000));
+                    const result = await Promise.race([tesseractWorker.recognize(img), ocrTimeout]);
+                    ocrText = result.data.text.trim();
+                    if (ocrText) log(logEl, `  → Texte: "${ocrText.replace(/\n/g, ' ').slice(0, 80)}"`, 'ok');
+                } catch (ocrErr) {
+                    log(logEl, `  → OCR indisponible: ${ocrErr.message}`, 'warn');
+                }
+            }
+
             colorName = await extractDominantColor(img);
-            log(logEl, `  → Couleur dominante: ${colorName}`, 'ok');
+            log(logEl, `  → Couleur: ${colorName}`, 'ok');
         } catch (e) {
             log(logEl, `  → Erreur analyse: ${e.message}`, 'warn');
             if (!objects.length) objects = getFallbackObjects(idx);
         }
 
-        const meta = {
-            brand: objects[0] || 'objet',
-            model: '',
-            color: colorName,
-            context: visionModel ? 'produit' : getFallbackContext(idx),
-        };
-
-        if (!visionModel) {
-            meta.brand = getFallbackBrand(idx);
-            meta.model = 'v' + (idx + 1);
+        let brand = '';
+        if (ocrText) {
+            const words = ocrText.match(/\b[A-Z][a-z]+\b/g) || [];
+            brand = words[0] || '';
         }
+        if (!brand && classes.length > 0) {
+            const top = classes[0];
+            if (/watch|phone|camera|shoe|bag|bottle|glass|book|laptop|headphone|sunglass|bicycle|car|tv|monitor|keyboard/i.test(top)) brand = top;
+        }
+        if (!brand) brand = getFallbackBrand(idx);
+
+        let model = '';
+        if (classes.length > 0) {
+            model = classes[0].toLowerCase()
+                .replace(/[^a-z0-9]+/g, '-')
+                .replace(/^-|-$/g, '')
+                .slice(0, 30);
+        }
+        if (!model) model = 'v' + (idx + 1);
+
+        let context = objects[0] || '';
+        if (!context) context = getFallbackContext(idx);
+        context = context.toLowerCase().replace(/[^a-z0-9]+/g, '-');
 
         const ext = item.file.name.split('.').pop();
         let newName = pattern
-            .replace('{marque}', meta.brand.toLowerCase())
-            .replace('{modele}', meta.model ? '-' + meta.model.toLowerCase() : '')
-            .replace('{couleur}', meta.color)
-            .replace('{contexte}', meta.context)
+            .replace('{marque}', brand.toLowerCase())
+            .replace('{modele}', model)
+            .replace('{couleur}', colorName)
+            .replace('{contexte}', context)
             .replace(/[^a-z0-9-]/g, '')
             .replace(/-+/g, '-')
             .replace(/^-|-$/g, '') + '.' + ext;
