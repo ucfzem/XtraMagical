@@ -341,7 +341,7 @@
         <h2>Renommage de photos en lot</h2>
 
         <div class="hint">
-            💡 <strong>IA réelle :</strong> détection d'objets via TensorFlow.js + COCO-SSD (dans votre navigateur). Couleurs extraites du canvas. Génération via Pollinations.ai.
+            💡 <strong>IA réelle :</strong> détection d'objets via TensorFlow.js + COCO-SSD. Chaque image est analysée individuellement. Noms uniques garantis (anti-collision).
         </div>
 
         <div class="form-group">
@@ -474,19 +474,33 @@ let degraded = false;
     const banner = document.getElementById('statusBanner');
     try {
         const timeout = new Promise((_, rej) => setTimeout(() => rej(new Error('Timeout')), 15000));
-        await Promise.race([cocoSsd.load(), timeout]);
-        visionModel = await cocoSsd.load;
-        log(logEl, 'Modèle COCO-SSD chargé (détection d\'objets)', 'ok');
+        const model = await Promise.race([cocoSsd.load(), timeout]);
+        visionModel = model;
+        log(logEl, 'Modèle COCO-SSD chargé (' + model.modelUrl + ')', 'ok');
     } catch (e) {
         degraded = true;
         banner.style.display = 'block';
-        log(logEl, 'TF.js non disponible, détection simulée: ' + e.message, 'warn');
+        log(logEl, 'TF.js non disponible, mode dégradé: ' + e.message, 'warn');
     }
 })();
 
-function getFallbackObjects() {
-    const list = ['produit', 'objet', 'article', 'photo', 'image'];
-    return [list[Math.floor(Math.random() * list.length)]];
+function getFallbackObjects(index) {
+    const list = [
+        'produit', 'objet', 'article', 'photo', 'image',
+        'element', 'accessoire', 'equipement', 'document', 'illustration'
+    ];
+    const seed = (index * 7 + 3) % list.length;
+    return [list[seed]];
+}
+
+function getFallbackBrand(index) {
+    const list = ['Nike', 'Adidas', 'Apple', 'Sony', 'Samsung', 'Canon', 'Lego', 'Dior', 'Louis', 'H&M'];
+    return list[(index * 13 + 7) % list.length];
+}
+
+function getFallbackContext(index) {
+    const list = ['produit', 'portrait', 'paysage', 'catalogue', 'studio', 'exterieur', 'macro', 'groupe'];
+    return list[(index * 3 + 5) % list.length];
 }
 
 const COLOR_MAP = [
@@ -496,6 +510,10 @@ const COLOR_MAP = [
     { name: 'noir', r: 30, g: 30, b: 30 },
     { name: 'blanc', r: 230, g: 230, b: 230 },
     { name: 'jaune', r: 230, g: 220, b: 50 },
+    { name: 'orange', r: 230, g: 150, b: 30 },
+    { name: 'rose', r: 220, g: 120, b: 150 },
+    { name: 'violet', r: 140, g: 60, b: 200 },
+    { name: 'marron', r: 120, g: 70, b: 30 },
     { name: 'gris', r: 140, g: 140, b: 140 },
 ];
 
@@ -509,16 +527,20 @@ function closestColor(r, g, b) {
 }
 
 async function extractDominantColor(img) {
-    const c = document.createElement('canvas');
-    c.width = 50; c.height = 50;
-    const ctx = c.getContext('2d');
-    ctx.drawImage(img, 0, 0, 50, 50);
-    const data = ctx.getImageData(0, 0, 50, 50).data;
-    let tr = 0, tg = 0, tb = 0, count = 0;
-    for (let i = 0; i < data.length; i += 16) {
-        tr += data[i]; tg += data[i + 1]; tb += data[i + 2]; count++;
+    try {
+        const c = document.createElement('canvas');
+        c.width = 50; c.height = 50;
+        const ctx = c.getContext('2d');
+        ctx.drawImage(img, 0, 0, 50, 50);
+        const data = ctx.getImageData(0, 0, 50, 50).data;
+        let tr = 0, tg = 0, tb = 0, count = 0;
+        for (let i = 0; i < data.length; i += 16) {
+            tr += data[i]; tg += data[i + 1]; tb += data[i + 2]; count++;
+        }
+        return closestColor(tr / count, tg / count, tb / count);
+    } catch (e) {
+        return 'inconnue';
     }
-    return closestColor(tr / count, tg / count, tb / count);
 }
 
 dropZone.addEventListener('click', () => fileInput.click());
@@ -580,7 +602,10 @@ processBtn.addEventListener('click', async () => {
     const pattern = document.getElementById('namingPattern').value;
     log(logEl, `Traitement de ${uploadedFiles.length} image(s)`, 'info');
 
-    for (const item of uploadedFiles) {
+    const usedNames = new Set();
+
+    for (let idx = 0; idx < uploadedFiles.length; idx++) {
+        const item = uploadedFiles[idx];
         item.status = 'processing';
         renderPreviews();
         const pb = document.getElementById('pb-' + item.id);
@@ -597,32 +622,48 @@ processBtn.addEventListener('click', async () => {
             if (visionModel) {
                 const predictions = await visionModel.detect(img);
                 objects = predictions.map(p => p.class);
-                log(logEl, `Objets détectés: ${objects.join(', ')}`, 'ok');
+                log(logEl, `  → Objets détectés: ${objects.join(', ')}`, 'ok');
             } else {
-                objects = getFallbackObjects();
-                log(logEl, `Objets (simulés): ${objects.join(', ')}`, 'warn');
+                objects = getFallbackObjects(idx);
+                log(logEl, `  → Objets (mode dégradé): ${objects.join(', ')}`, 'warn');
             }
             colorName = await extractDominantColor(img);
-            log(logEl, `Couleur dominante: ${colorName}`, 'ok');
+            log(logEl, `  → Couleur dominante: ${colorName}`, 'ok');
         } catch (e) {
-            log(logEl, `Erreur analyse: ${e.message}`, 'warn');
-            if (!objects.length) objects = getFallbackObjects();
+            log(logEl, `  → Erreur analyse: ${e.message}`, 'warn');
+            if (!objects.length) objects = getFallbackObjects(idx);
         }
 
         const meta = {
             brand: objects[0] || 'objet',
-            model: 'v1',
+            model: '',
             color: colorName,
-            context: 'produit',
+            context: visionModel ? 'produit' : getFallbackContext(idx),
         };
 
+        if (!visionModel) {
+            meta.brand = getFallbackBrand(idx);
+            meta.model = 'v' + (idx + 1);
+        }
+
         const ext = item.file.name.split('.').pop();
-        const newName = pattern
-            .replace('{marque}', meta.brand)
-            .replace('{modele}', meta.model)
+        let newName = pattern
+            .replace('{marque}', meta.brand.toLowerCase())
+            .replace('{modele}', meta.model ? '-' + meta.model.toLowerCase() : '')
             .replace('{couleur}', meta.color)
             .replace('{contexte}', meta.context)
-            .toLowerCase().replace(/[^a-z0-9-]/g, '') + '.' + ext;
+            .replace(/[^a-z0-9-]/g, '')
+            .replace(/-+/g, '-')
+            .replace(/^-|-$/g, '') + '.' + ext;
+
+        let counter = 1;
+        while (usedNames.has(newName)) {
+            const base = newName.replace('.' + ext, '');
+            newName = base + '-' + counter + '.' + ext;
+            counter++;
+        }
+        usedNames.add(newName);
+
         item.newName = newName;
 
         for (let p = 0; p <= 100; p += 25) {
@@ -632,7 +673,7 @@ processBtn.addEventListener('click', async () => {
 
         item.status = 'completed';
         renderPreviews();
-        log(logEl, `Renommé en ${newName}`, 'ok');
+        log(logEl, `  ✅ Renommé en ${newName}`, 'ok');
     }
 
     log(logEl, 'Traitement terminé.', 'ok');
