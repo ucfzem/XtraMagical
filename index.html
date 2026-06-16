@@ -545,15 +545,24 @@ function closestColor(r, g, b) {
 async function extractDominantColor(img) {
     try {
         const c = document.createElement('canvas');
-        c.width = 50; c.height = 50;
+        c.width = 100; c.height = 100;
         const ctx = c.getContext('2d');
-        ctx.drawImage(img, 0, 0, 50, 50);
-        const data = ctx.getImageData(0, 0, 50, 50).data;
-        let tr = 0, tg = 0, tb = 0, count = 0;
-        for (let i = 0; i < data.length; i += 16) {
-            tr += data[i]; tg += data[i + 1]; tb += data[i + 2]; count++;
+        ctx.drawImage(img, 0, 0, 100, 100);
+        const data = ctx.getImageData(0, 0, 100, 100).data;
+        const buckets = {};
+        for (let i = 0; i < data.length; i += 8) {
+            const r = Math.round(data[i] / 60) * 60;
+            const g = Math.round(data[i + 1] / 60) * 60;
+            const b = Math.round(data[i + 2] / 60) * 60;
+            const key = r + ',' + g + ',' + b;
+            buckets[key] = (buckets[key] || 0) + 1;
         }
-        return closestColor(tr / count, tg / count, tb / count);
+        let maxCount = 0, bestKey = '0,0,0';
+        for (const key in buckets) {
+            if (buckets[key] > maxCount) { maxCount = buckets[key]; bestKey = key; }
+        }
+        const parts = bestKey.split(',');
+        return closestColor(+parts[0], +parts[1], +parts[2]);
     } catch (e) {
         return 'inconnue';
     }
