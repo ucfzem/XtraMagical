@@ -3,10 +3,11 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>XtraMagical - Renommage IA & Générateur d'images</title>
-<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.21.0" onerror="window.TF_FAILED=true"></script>
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.21.0/dist/tf.min.js" onerror="window.TF_FAILED=true"></script>
 <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd@2.2.3" onerror="window.TF_FAILED=true"></script>
 <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/mobilenet@2.1.1/dist/mobilenet.min.js" onerror="window.TF_FAILED=true"></script>
 <script src="https://cdn.jsdelivr.net/npm/tesseract.js@4.1.1/dist/tesseract.min.js" onerror="window.TF_FAILED=true"></script>
+<script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
 <style>
     :root {
         --bg-primary: #1c1917;
@@ -31,10 +32,12 @@
         --log-text: #e7e5e4;
         --status-processing: #d4af37;
         --status-completed: #10b981;
+        --status-error: #ef4444;
         --hint-bg: #44403c;
         --hint-text: #fcd34d;
         --hint-border: #d4af37;
     }
+
 
     [data-theme="light"] {
         --bg-primary: #f5f0e6;
@@ -59,10 +62,12 @@
         --log-text: #e7e5e4;
         --status-processing: #b8860b;
         --status-completed: #059669;
+        --status-error: #dc2626;
         --hint-bg: #fef3c7;
         --hint-text: #78350f;
         --hint-border: #b8860b;
     }
+
 
     * { box-sizing: border-box; margin: 0; padding: 0; transition: background-color 0.3s ease, color 0.3s ease, border-color 0.3s ease; }
     
@@ -73,6 +78,7 @@
         color: var(--text-primary);
         padding: 20px;
     }
+
 
     .container { max-width: 1100px; margin: 0 auto; }
     
@@ -92,6 +98,7 @@
     
     header p { color: var(--text-secondary); font-size: 1.05em; }
 
+
     .theme-toggle {
         background: var(--btn-secondary-bg);
         color: var(--btn-secondary-text);
@@ -106,6 +113,7 @@
         gap: 8px;
     }
     .theme-toggle:hover { background: var(--bg-tertiary); }
+
 
     .tabs {
         display: flex;
@@ -130,11 +138,14 @@
         border-bottom-color: var(--accent-gold);
     }
 
+
     .module { display: none; background: var(--bg-secondary); border-radius: 12px; padding: 30px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); border: 1px solid var(--border-color); }
     .module.active { display: block; }
 
+
     h2 { color: var(--text-primary); margin-bottom: 20px; font-size: 1.4em; border-bottom: 1px solid var(--border-color); padding-bottom: 10px; }
     h3 { color: var(--text-primary); margin: 20px 0 10px; font-size: 1.05em; }
+
 
     .drop-zone {
         border: 3px dashed var(--dropzone-border);
@@ -153,6 +164,7 @@
     }
     .drop-zone p { margin-top: 8px; }
     .drop-zone .icon { font-size: 3em; margin-bottom: 10px; color: var(--accent-gold); }
+
 
     input[type="file"] { display: none; }
     input[type="text"], textarea, select {
@@ -174,9 +186,11 @@
     textarea { resize: vertical; min-height: 80px; }
     select option { background: var(--bg-secondary); color: var(--text-primary); }
 
+
     label { display: block; margin-bottom: 6px; font-weight: 600; font-size: 0.9em; color: var(--text-secondary); }
     .form-group { margin-bottom: 18px; }
     .form-group small { color: var(--text-secondary); display: block; margin-top: 4px; }
+
 
     button {
         padding: 10px 22px;
@@ -197,6 +211,7 @@
     
     button.success { background: var(--btn-success-bg); color: var(--btn-success-text); }
     button.success:hover:not(:disabled) { filter: brightness(1.1); }
+
 
     .preview-grid {
         display: grid;
@@ -234,6 +249,8 @@
     }
     .status.completed { background: rgba(16, 185, 129, 0.9); }
     .status.processing { background: rgba(212, 175, 55, 0.9); color: #1c1917; font-weight: bold; }
+    .status.error { background: rgba(239, 68, 68, 0.9); }
+
 
     .progress {
         width: 100%;
@@ -250,6 +267,7 @@
         transition: width 0.3s;
     }
 
+
     .image-result {
         margin-top: 20px;
         text-align: center;
@@ -261,6 +279,7 @@
         border: 2px solid var(--border-color);
     }
 
+
     .prompt-comparison {
         display: grid;
         grid-template-columns: 1fr 1fr;
@@ -268,6 +287,7 @@
         margin-top: 15px;
     }
     @media (max-width: 700px) { .prompt-comparison { grid-template-columns: 1fr; } }
+
 
     .hint {
         background: var(--hint-bg);
@@ -278,6 +298,7 @@
         font-size: 0.9em;
         color: var(--hint-text);
     }
+
 
     .stats {
         display: flex;
@@ -297,7 +318,9 @@
     .stat-value { font-size: 1.8em; font-weight: bold; color: var(--accent-gold); }
     .stat-label { color: var(--text-secondary); font-size: 0.85em; }
 
+
     .actions { display: flex; gap: 10px; margin-top: 20px; flex-wrap: wrap; }
+
 
     .log {
         background: var(--log-bg);
@@ -315,6 +338,20 @@
     .log-line .time { color: var(--text-secondary); }
     .log-line .ok { color: var(--status-completed); }
     .log-line .info { color: var(--accent-gold); }
+    .log-line .warn { color: #f59e0b; }
+    .log-line .error { color: var(--status-error); }
+    
+    .lens-flare-badge {
+        position: absolute;
+        top: 8px;
+        left: 8px;
+        background: rgba(255, 165, 0, 0.9);
+        color: #1c1917;
+        padding: 3px 8px;
+        border-radius: 4px;
+        font-size: 0.75em;
+        font-weight: bold;
+    }
 </style>
 </head>
 <body>
@@ -329,28 +366,34 @@
         </button>
     </header>
 
+
     <div id="statusBanner" style="background:var(--accent-gold);color:var(--btn-primary-text);padding:10px 16px;border-radius:8px;margin-bottom:16px;font-weight:600;display:none;">
         ⚡ Mode dégradé — certaines fonctionnalités IA utilisent des données simulées
     </div>
+
 
     <div class="tabs">
         <button class="tab active" data-tab="rename">📸 Module A - Renommage IA</button>
         <button class="tab" data-tab="generate">🎨 Module B - Générateur</button>
     </div>
 
+
     <!-- MODULE A -->
     <div class="module active" id="module-rename">
         <h2>Renommage de photos en lot</h2>
 
+
         <div class="hint">
-            💡 <strong>IA triple :</strong> COCO-SSD (90 objets) + MobileNet (1000 classes) + Tesseract OCR (marques/texte). Chaque image analysée par les 3 modèles. Noms uniques garantis.
+            💡 <strong>IA triple :</strong> COCO-SSD (90 objets) + MobileNet (1000 classes) + Tesseract OCR (marques/texte) + <strong>Détection de flare optique</strong>. Chaque image analysée par les 4 modèles. Noms uniques garantis.
         </div>
+
 
         <div class="form-group">
             <label>Pattern de nommage</label>
             <input type="text" id="namingPattern" value="{marque}-{modele}-{couleur}-{contexte}" placeholder="{marque}-{modele}-{couleur}-{contexte}">
-            <small>Variables : {marque}, {modele}, {couleur}, {contexte}</small>
+            <small>Variables : {marque}, {modele}, {couleur}, {contexte}, {flare}</small>
         </div>
+
 
         <div class="drop-zone" id="dropZone">
             <div class="icon">📥</div>
@@ -359,13 +402,16 @@
             <input type="file" id="fileInput" multiple accept="image/*">
         </div>
 
+
         <div class="stats" id="stats" style="display:none;">
             <div class="stat-card"><div class="stat-value" id="stat-total">0</div><div class="stat-label">Images</div></div>
             <div class="stat-card"><div class="stat-value" id="stat-done">0</div><div class="stat-label">Terminées</div></div>
             <div class="stat-card"><div class="stat-value" id="stat-pending">0</div><div class="stat-label">En cours</div></div>
         </div>
 
+
         <div class="preview-grid" id="previewGrid"></div>
+
 
         <div class="actions">
             <button id="processBtn" disabled>🚀 Lancer le traitement</button>
@@ -373,18 +419,22 @@
             <button id="downloadZip" class="success" disabled>📦 Télécharger ZIP</button>
         </div>
 
+
         <h3>📋 Logs de traitement</h3>
         <div class="log" id="log"></div>
     </div>
+
 
     <!-- MODULE B -->
     <div class="module" id="module-generate">
         <h2>Générateur d'images avec prompt amélioré</h2>
 
+
         <div class="form-group">
             <label>Votre prompt initial</label>
             <textarea id="simplePrompt" placeholder="Ex: un chat sur une table"></textarea>
         </div>
+
 
         <div class="form-group">
             <label>Style</label>
@@ -397,10 +447,12 @@
             </select>
         </div>
 
+
         <div class="actions">
             <button id="enhanceBtn">✨ Améliorer le prompt (LLM)</button>
             <button id="generateBtn" class="success" disabled>🎨 Générer l'image</button>
         </div>
+
 
         <div class="prompt-comparison" style="margin-top: 30px;">
             <div>
@@ -410,29 +462,34 @@
                 </div>
             </div>
             <div>
-                <h3>✨ Prompt enrichi (GPT-4o-mini)</h3>
+                <h3>✨ Prompt enrichi (Pollinations.ai)</h3>
                 <div id="promptEnhanced" style="background: rgba(212, 175, 55, 0.1); padding: 15px; border-radius: 8px; border: 1px solid var(--accent-gold); min-height: 100px; color: var(--text-primary);">
                     (en attente...)
                 </div>
             </div>
         </div>
 
+
         <div class="form-group" style="margin-top: 20px;">
             <label>Prompt final (éditable)</label>
             <textarea id="finalPrompt" rows="4"></textarea>
         </div>
 
+
         <div class="image-result" id="imageResult"></div>
+
 
         <div class="log" id="logGen"></div>
     </div>
 </div>
+
 
 <script>
 const themeToggle = document.getElementById('themeToggle');
 const themeIcon = document.getElementById('themeIcon');
 const themeText = document.getElementById('themeText');
 const html = document.documentElement;
+
 
 themeToggle.addEventListener('click', () => {
     const currentTheme = html.getAttribute('data-theme');
@@ -441,6 +498,7 @@ themeToggle.addEventListener('click', () => {
     themeIcon.textContent = newTheme === 'light' ? '🌙' : '☀️';
     themeText.textContent = newTheme === 'light' ? 'Mode Sombre' : 'Mode Clair';
 });
+
 
 document.querySelectorAll('.tab').forEach(tab => {
     tab.addEventListener('click', () => {
@@ -451,6 +509,7 @@ document.querySelectorAll('.tab').forEach(tab => {
     });
 });
 
+
 function log(logEl, msg, type = 'info') {
     const time = new Date().toLocaleTimeString();
     const line = document.createElement('div');
@@ -460,6 +519,7 @@ function log(logEl, msg, type = 'info') {
     logEl.scrollTop = logEl.scrollHeight;
 }
 
+
 const dropZone = document.getElementById('dropZone');
 const fileInput = document.getElementById('fileInput');
 const previewGrid = document.getElementById('previewGrid');
@@ -468,58 +528,240 @@ const clearBtn = document.getElementById('clearBtn');
 const statsEl = document.getElementById('stats');
 const logEl = document.getElementById('log');
 
+
 let uploadedFiles = [];
 let models = { cocossd: null, mobilenet: null };
 let tesseractWorker = null;
 let degraded = false;
 
+
 (async () => {
     const banner = document.getElementById('statusBanner');
     const errors = [];
 
+
+    if (typeof tf === 'undefined') {
+        errors.push('TensorFlow.js non chargé');
+        degraded = true;
+        banner.style.display = 'block';
+        log(logEl, '⚠ TensorFlow.js non disponible. Mode dégradé activé.', 'warn');
+        return;
+    }
+
+
     try {
-        const timeout = new Promise((_, rej) => setTimeout(() => rej(new Error('Timeout')), 15000));
-        models.cocossd = await Promise.race([cocoSsd.load(), timeout]);
+        const loadPromise = cocoSsd.load();
+        const timeoutPromise = new Promise((_, rej) => 
+            setTimeout(() => rej(new Error('Timeout 15s')), 15000)
+        );
+        models.cocossd = await Promise.race([loadPromise, timeoutPromise]);
         log(logEl, '✓ COCO-SSD chargé (90 objets)', 'ok');
-    } catch (e) { errors.push('COCO-SSD: ' + e.message); }
+    } catch (e) { 
+        errors.push('COCO-SSD: ' + e.message); 
+        log(logEl, '✗ COCO-SSD: ' + e.message, 'error');
+    }
+
 
     try {
-        const timeout = new Promise((_, rej) => setTimeout(() => rej(new Error('Timeout')), 15000));
-        models.mobilenet = await Promise.race([mobilenet.load(), timeout]);
+        const loadPromise = mobilenet.load();
+        const timeoutPromise = new Promise((_, rej) => 
+            setTimeout(() => rej(new Error('Timeout 15s')), 15000)
+        );
+        models.mobilenet = await Promise.race([loadPromise, timeoutPromise]);
         log(logEl, '✓ MobileNet chargé (1000 classes)', 'ok');
-    } catch (e) { errors.push('MobileNet: ' + e.message); }
+    } catch (e) { 
+        errors.push('MobileNet: ' + e.message); 
+        log(logEl, '✗ MobileNet: ' + e.message, 'error');
+    }
+
 
     try {
-        const timeout = new Promise((_, rej) => setTimeout(() => rej(new Error('Timeout')), 25000));
-        tesseractWorker = await Promise.race([Tesseract.createWorker('fra+eng'), timeout]);
+        const loadPromise = Tesseract.createWorker('fra+eng');
+        const timeoutPromise = new Promise((_, rej) => 
+            setTimeout(() => rej(new Error('Timeout 25s')), 25000)
+        );
+        tesseractWorker = await Promise.race([loadPromise, timeoutPromise]);
         log(logEl, '✓ Tesseract OCR prêt (texte/marques)', 'ok');
-    } catch (e) { errors.push('Tesseract: ' + e.message); }
+    } catch (e) { 
+        errors.push('Tesseract: ' + e.message); 
+        log(logEl, '✗ Tesseract: ' + e.message, 'error');
+    }
+
 
     if (errors.length > 0) {
         degraded = true;
         banner.style.display = 'block';
-        log(logEl, '⚠ Modules défaillants: ' + errors.join(' | '), 'warn');
+        log(logEl, '⚠ Mode dégradé: ' + errors.length + ' module(s) sur 3 indisponible(s)', 'warn');
     }
 })();
 
-function getFallbackObjects(index) {
-    const list = [
-        'produit', 'objet', 'article', 'photo', 'image',
-        'element', 'accessoire', 'equipement', 'document', 'illustration'
-    ];
-    const seed = (index * 7 + 3) % list.length;
-    return [list[seed]];
+
+const CATEGORY_MAP = {
+    person: 'persona', bicycle: 'vehicule', car: 'vehicule',
+    motorcycle: 'vehicule', airplane: 'vehicule', bus: 'vehicule',
+    train: 'vehicule', truck: 'vehicule', boat: 'vehicule',
+    'traffic light': 'signal', 'fire hydrant': 'signal',
+    'stop sign': 'signal', 'parking meter': 'signal',
+    bench: 'mobilier', chair: 'mobilier', couch: 'mobilier',
+    bed: 'mobilier', 'dining table': 'mobilier',
+    bird: 'animal', cat: 'animal', dog: 'animal', horse: 'animal',
+    sheep: 'animal', cow: 'animal', elephant: 'animal',
+    bear: 'animal', zebra: 'animal', giraffe: 'animal',
+    backpack: 'accessoire', umbrella: 'accessoire', handbag: 'accessoire',
+    tie: 'accessoire', suitcase: 'accessoire',
+    frisbee: 'sport', skis: 'sport', snowboard: 'sport',
+    'sports ball': 'sport', kite: 'sport', 'baseball bat': 'sport',
+    'baseball glove': 'sport', skateboard: 'sport', surfboard: 'sport',
+    'tennis racket': 'sport',
+    bottle: 'boisson', 'wine glass': 'boisson', cup: 'boisson',
+    fork: 'cuisine', knife: 'cuisine', spoon: 'cuisine', bowl: 'cuisine',
+    banana: 'alimentation', apple: 'alimentation', sandwich: 'alimentation',
+    orange: 'alimentation', broccoli: 'alimentation', carrot: 'alimentation',
+    'hot dog': 'alimentation', pizza: 'alimentation', donut: 'alimentation',
+    cake: 'alimentation',
+    'potted plant': 'plant',
+    toilet: 'sanitaire', sink: 'sanitaire',
+    tv: 'electronique', laptop: 'electronique', mouse: 'electronique',
+    remote: 'electronique', keyboard: 'electronique', 'cell phone': 'electronique',
+    microwave: 'electromenager', oven: 'electromenager',
+    toaster: 'electromenager', refrigerator: 'electromenager',
+    book: 'papeterie', scissors: 'papeterie',
+    vase: 'decoration', clock: 'horlogerie',
+    'teddy bear': 'jouet',
+    'hair drier': 'soin', toothbrush: 'soin'
+};
+
+const BRAND_NAMES = {
+    persona: ['StudioPro', 'PortraitMax', 'FacePrime', 'ModeCraft', 'ChicShot', 'StyleLab', 'LensPro', 'PhotoElite'],
+    vehicule: ['AutoPrime', 'SpeedMax', 'Transway', 'DrivePro', 'MotoCraft', 'VroomMax', 'TurboPro', 'RoadMaster'],
+    signal: ['UrbanPro', 'CityMax', 'MetroPrime', 'StreetCraft', 'SignalPro', 'Crossway', 'TrafficLab', 'VoiePro'],
+    mobilier: ['MaisonPro', 'DecoMax', 'ComfortHome', 'MeubleCraft', 'HabitatPlus', 'ChicHome', 'LoungePro', 'RelaxMax'],
+    animal: ['Animalia', 'WildLife', 'FaunaPro', 'ZooMax', 'PetPrime', 'NatureCraft', 'BioShot', 'Animalis'],
+    accessoire: ['ModeMax', 'StylePro', 'UrbanBag', 'ChicLab', 'TrendCraft', 'WearPrime', 'LuxePro', 'VogueMax'],
+    sport: ['SportMax', 'FitPro', 'GameOn', 'MoveCraft', 'AthlonPro', 'PlayPrime', 'GymMax', 'ActionShot'],
+    boisson: ['VinumMax', 'BrewCraft', 'SipPro', 'BaristaMax', 'DrinkLab', 'ToastPrime', 'CafePro', 'HydraMax'],
+    cuisine: ['CuisinePro', 'ChefMax', 'TablePrime', 'CookLab', 'KitchenCraft', 'GastroMax', 'PrepPro', 'OvenPlus'],
+    alimentation: ['GourmetPro', 'SaveurMax', 'TastePrime', 'ChefCraft', 'DelicePro', 'FoodMax', 'Epicure', 'BistroPrime'],
+    plant: ['FloraMax', 'GreenPro', 'BioCraft', 'EcoPrime', 'GardenPlus', 'NaturelLab', 'Plantis', 'TerrePro'],
+    sanitaire: ['AquaPro', 'CleanMax', 'HygieneCraft', 'Sanilab', 'FreshPlus', 'ToiletPro', 'BainMax', 'EauPrime'],
+    electronique: ['TechPro', 'DigiCore', 'NovaTech', 'ByteCraft', 'LogicFlow', 'ChipMax', 'PixelPro', 'SmartCore'],
+    electromenager: ['ElectroMax', 'PowerLine', 'WattPro', 'VoltCraft', 'EnergyPlus', 'HomeTech', 'CurrentPro', 'MegaWatt'],
+    papeterie: ['PaperMax', 'WritePro', 'InkCraft', 'NotePrime', 'BookLab', 'PagePlus', 'ScribPro', 'FolioMax'],
+    decoration: ['ArtMax', 'DecorPro', 'StyleCraft', 'HomeLab', 'ChicPlus', 'ElegancePro', 'OrneMax', 'LuxeHome'],
+    jouet: ['PlayMax', 'FunPro', 'ToyPrime', 'KidsCraft', 'GameLab', 'JouetPlus', 'AmusePro', 'HappyMax'],
+    soin: ['BeautyMax', 'GroomPro', 'FreshPrime', 'CareLab', 'SantePro', 'BodyCraft', 'PureMax', 'SoinPro'],
+    horlogerie: ['TimePro', 'WatchMax', 'ClockCraft', 'TempoLab', 'HourPlus', 'ChronoPro', 'TicTac', 'MontrePrime']
+};
+
+const OBJECT_DESCRIPTORS = {
+    person: ['portrait', 'silhouette', 'figure', 'visage', 'profil'],
+    bicycle: ['velo', 'bicyclette', 'cycle', 'cyclisme', 'pedale'],
+    car: ['voiture', 'automobile', 'vehicule', 'coupe', 'berline'],
+    motorcycle: ['moto', 'motocyclette', 'deux-roues', 'scooter', 'custom'],
+    airplane: ['avion', 'aeronef', 'jet', 'aile', 'vol'],
+    bus: ['bus', 'autobus', 'car', 'transport', 'navette'],
+    train: ['train', 'rame', 'wagon', 'locomotive', 'rail'],
+    truck: ['camion', 'poids-lourd', 'remorque', 'cargo', 'transporteur'],
+    boat: ['bateau', 'navire', 'voilier', 'embarcation', 'marine'],
+    'traffic light': ['signal', 'feu', 'semaphore', 'tricolore', 'carrefour'],
+    'fire hydrant': ['bouche-incendie', 'borne', 'hydrant', 'secours', 'incendie'],
+    'stop sign': ['stop', 'panneau', 'signalisation', 'arret', 'circulation'],
+    'parking meter': ['parcmètre', 'stationnement', 'horodateur', 'parking', 'payant'],
+    bench: ['banc', 'assis', 'repos', 'parc', 'siege'],
+    chair: ['chaise', 'siege', 'fauteuil', 'assise', 'dossier'],
+    couch: ['canape', 'divan', 'sofa', 'salon', 'rembourre'],
+    bed: ['lit', 'couchette', 'dormir', 'matelas', 'chambre'],
+    'dining table': ['table', 'manger', 'repas', 'diner', 'plateau'],
+    bird: ['oiseau', 'volatile', 'plume', 'aile', 'passereau'],
+    cat: ['chat', 'felin', 'matou', 'miaou', 'domestique'],
+    dog: ['chien', 'canin', 'toutou', 'croc', 'fidele'],
+    horse: ['cheval', 'coursier', 'equide', 'selle', 'crin'],
+    sheep: ['mouton', 'brebis', 'ovin', 'laine', 'troupeau'],
+    cow: ['vache', 'bovin', 'veau', 'lait', 'herbe'],
+    elephant: ['elephant', 'pachyderme', 'defense', 'trompe', 'savane'],
+    bear: ['ours', 'plantigrade', 'mammifere', 'bruin', 'fourrure'],
+    zebra: ['zebre', 'equide', 'rayure', 'savane', 'afrique'],
+    giraffe: ['girafe', 'girafide', 'long-cou', 'tache', 'savane'],
+    backpack: ['sac-a-dos', 'sac', 'randonnee', 'ecolier', 'transport'],
+    umbrella: ['parapluie', 'pluie', 'ombrelle', 'protection', 'intemperie'],
+    handbag: ['sac-a-main', 'maroquinerie', 'accessoire', 'bandouliere', 'cuir'],
+    tie: ['cravate', 'noeud', 'costume', 'habille', 'elegance'],
+    suitcase: ['valise', 'bagage', 'voyage', 'roulette', 'transport'],
+    frisbee: ['frisbee', 'disque', 'lancer', 'jeu', 'volant'],
+    skis: ['ski', 'neige', 'glisse', 'piste', 'alpin'],
+    snowboard: ['snowboard', 'planche', 'neige', 'glisse', 'freestyle'],
+    'sports ball': ['ballon', 'balle', 'sport', 'jeu', 'ronde'],
+    kite: ['cerf-volant', 'vent', 'vol', 'couleur', 'fil'],
+    'baseball bat': ['batte', 'baseball', 'frappe', 'bois', 'ligne'],
+    'baseball glove': ['gant', 'baseball', 'attraper', 'cuir', 'lancer'],
+    skateboard: ['skateboard', 'planche', 'roulettes', 'street', 'trick'],
+    surfboard: ['surf', 'planche', 'vague', 'ocean', 'glisse'],
+    'tennis racket': ['raquette', 'tennis', 'filet', 'corde', 'service'],
+    bottle: ['bouteille', 'boisson', 'verre', 'liquide', 'contenant'],
+    'wine glass': ['verre-a-vin', 'vin', 'degustation', 'cristal', 'pied'],
+    cup: ['tasse', 'gobelet', 'boisson', 'cafe', 'the'],
+    fork: ['fourchette', 'couvert', 'pique', 'manger', 'dente'],
+    knife: ['couteau', 'lame', 'tranchant', 'decouper', 'coutellerie'],
+    spoon: ['cuillere', 'cuiller', 'soupe', 'manger', 'couvert'],
+    bowl: ['bol', 'saladier', 'contenant', 'soupe', 'cereales'],
+    banana: ['banane', 'fruit', 'jaune', 'tropical', 'regime'],
+    apple: ['pomme', 'fruit', 'rouge', 'vert', 'verger'],
+    sandwich: ['sandwich', 'garniture', 'pain', 'jambon', 'fromage'],
+    orange: ['orange', 'fruit', 'agrume', 'jus', 'vitamine'],
+    broccoli: ['brocoli', 'legume', 'vert', 'crucifere', 'sante'],
+    carrot: ['carotte', 'legume', 'orange', 'racine', 'crudite'],
+    'hot dog': ['hot-dog', 'saucisse', 'pain', 'snack', 'fast-food'],
+    pizza: ['pizza', 'napolitaine', 'cuite', 'mozzarella', 'italienne'],
+    donut: ['donut', 'beignet', 'sucre', 'glace', 'patisserie'],
+    cake: ['gateau', 'patisserie', 'sucre', 'creme', 'anniversaire'],
+    'potted plant': ['plante', 'pot', 'vert', 'feuille', 'interieur'],
+    toilet: ['toilette', 'wc', 'sanitaire', 'cuvette', 'cabinet'],
+    sink: ['evier', 'lavabo', 'robinet', 'eau', 'vaisselle'],
+    tv: ['television', 'ecran', 'tele', 'diffusion', 'emission'],
+    laptop: ['ordinateur', 'portable', 'notebook', 'pc', 'ecran'],
+    mouse: ['souris', 'peripherique', 'pointeur', 'clic', 'optique'],
+    remote: ['telecommande', 'zapper', 'infrarouge', 'bouton', 'controle'],
+    keyboard: ['clavier', 'taper', 'saisie', 'lettres', 'dactylo'],
+    'cell phone': ['telephone', 'mobile', 'smartphone', 'portable', 'ecran'],
+    microwave: ['micro-ondes', 'cuisson', 'chauffer', 'four', 'rapide'],
+    oven: ['four', 'cuisson', 'cuire', 'gastronomie', 'chaleur'],
+    toaster: ['grille-pain', 'toast', 'dore', 'petit-dejeuner', 'pain'],
+    refrigerator: ['frigo', 'refrigerateur', 'froid', 'conserve', 'cuisine'],
+    book: ['livre', 'lecture', 'page', 'couverture', 'roman'],
+    scissors: ['ciseaux', 'couper', 'lame', 'decoupage', 'couture'],
+    vase: ['vase', 'fleur', 'decoratif', 'ceramique', 'contenant'],
+    clock: ['horloge', 'pendule', 'temps', 'aiguille', 'cadran'],
+    'teddy bear': ['ours-en-peluche', 'peluche', 'nounours', 'doudou', 'calin'],
+    'hair drier': ['seche-cheveux', 'cheveux', 'coiffage', 'souffle', 'chaud'],
+    toothbrush: ['brosse-a-dents', 'dents', 'hygiene', 'brossage', 'dentifrice']
+};
+
+const FALLBACK_CATEGORIES = ['electronique', 'accessoire', 'mobilier', 'alimentation', 'sport', 'vehicule', 'cuisine', 'plant'];
+
+function getCategory(objects) {
+    for (const obj of objects) {
+        const key = obj.toLowerCase();
+        if (CATEGORY_MAP[key]) return CATEGORY_MAP[key];
+    }
+    return FALLBACK_CATEGORIES[Math.floor(Math.random() * FALLBACK_CATEGORIES.length)];
 }
 
-function getFallbackBrand(index) {
-    const list = ['Nike', 'Adidas', 'Apple', 'Sony', 'Samsung', 'Canon', 'Lego', 'Dior', 'Louis', 'H&M'];
-    return list[(index * 13 + 7) % list.length];
+function getBrandForCategory(category, seed) {
+    const brands = BRAND_NAMES[category];
+    if (!brands) return 'ProMax';
+    return brands[(seed * 13 + 7) % brands.length];
 }
 
-function getFallbackContext(index) {
-    const list = ['produit', 'portrait', 'paysage', 'catalogue', 'studio', 'exterieur', 'macro', 'groupe'];
-    return list[(index * 3 + 5) % list.length];
+function getDescriptor(objects, seed) {
+    for (const obj of objects) {
+        const key = obj.toLowerCase();
+        const descs = OBJECT_DESCRIPTORS[key];
+        if (descs) return descs[(seed * 3 + 5) % descs.length];
+    }
+    const fallbackDescs = ['produit', 'objet', 'article', 'photo', 'image'];
+    return fallbackDescs[(seed * 7 + 3) % fallbackDescs.length];
 }
+
 
 const COLOR_MAP = [
     { name: 'rouge', r: 200, g: 50, b: 50 },
@@ -535,6 +777,7 @@ const COLOR_MAP = [
     { name: 'gris', r: 140, g: 140, b: 140 },
 ];
 
+
 function closestColor(r, g, b) {
     let min = Infinity, name = 'inconnue';
     for (const c of COLOR_MAP) {
@@ -543,6 +786,90 @@ function closestColor(r, g, b) {
     }
     return name;
 }
+
+
+function detectLensFlare(imageData) {
+    const data = imageData.data;
+    const width = imageData.width;
+    const height = imageData.height;
+    
+    let brightPixels = 0;
+    let totalBrightness = 0;
+    let maxBrightness = 0;
+    let brightClusters = 0;
+    
+    const BRIGHTNESS_THRESHOLD = 240;
+    const SATURATION_THRESHOLD = 0.15;
+    const MIN_CLUSTER_SIZE = 5;
+    const FLARE_RATIO_THRESHOLD = 0.02;
+    
+    const visited = new Set();
+    
+    for (let y = 0; y < height; y += 2) {
+        for (let x = 0; x < width; x += 2) {
+            const i = (y * width + x) * 4;
+            const r = data[i];
+            const g = data[i + 1];
+            const b = data[i + 2];
+            
+            const brightness = (r + g + b) / 3;
+            const maxVal = Math.max(r, g, b);
+            const minVal = Math.min(r, g, b);
+            const saturation = maxVal === 0 ? 0 : (maxVal - minVal) / maxVal;
+            
+            totalBrightness += brightness;
+            if (brightness > maxBrightness) maxBrightness = brightness;
+            
+            if (brightness > BRIGHTNESS_THRESHOLD && saturation < SATURATION_THRESHOLD) {
+                brightPixels++;
+                
+                const key = `${x},${y}`;
+                if (!visited.has(key)) {
+                    let clusterSize = 1;
+                    const neighbors = [
+                        [x-2,y], [x+2,y], [x,y-2], [x,y+2],
+                        [x-2,y-2], [x+2,y+2], [x-2,y+2], [x+2,y-2]
+                    ];
+                    for (const [nx, ny] of neighbors) {
+                        if (nx >= 0 && nx < width && ny >= 0 && ny < height) {
+                            const ni = (ny * width + nx) * 4;
+                            const nr = data[ni], ng = data[ni+1], nb = data[ni+2];
+                            const nBright = (nr + ng + nb) / 3;
+                            const nMax = Math.max(nr, ng, nb);
+                            const nMin = Math.min(nr, ng, nb);
+                            const nSat = nMax === 0 ? 0 : (nMax - nMin) / nMax;
+                            if (nBright > BRIGHTNESS_THRESHOLD && nSat < SATURATION_THRESHOLD) {
+                                clusterSize++;
+                            }
+                        }
+                    }
+                    if (clusterSize >= MIN_CLUSTER_SIZE) {
+                        brightClusters++;
+                    }
+                }
+                visited.add(key);
+            }
+        }
+    }
+    
+    const sampledPixels = (width * height) / 4;
+    const avgBrightness = totalBrightness / sampledPixels;
+    const brightRatio = brightPixels / sampledPixels;
+    
+    const hasFlare = brightRatio > FLARE_RATIO_THRESHOLD && 
+                     avgBrightness > 180 && 
+                     brightClusters > 0 &&
+                     maxBrightness > 250;
+    
+    return {
+        detected: hasFlare,
+        ratio: brightRatio,
+        avgBrightness: avgBrightness,
+        clusters: brightClusters,
+        maxBrightness: maxBrightness
+    };
+}
+
 
 async function extractDominantColor(img) {
     try {
@@ -575,6 +902,7 @@ async function extractDominantColor(img) {
     }
 }
 
+
 dropZone.addEventListener('click', () => fileInput.click());
 dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('dragover'); });
 dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
@@ -585,6 +913,7 @@ dropZone.addEventListener('drop', e => {
 });
 fileInput.addEventListener('change', e => handleFiles(e.target.files));
 
+
 function handleFiles(files) {
     const arr = Array.from(files).filter(f => f.type.startsWith('image/'));
     if (uploadedFiles.length + arr.length > 50) {
@@ -594,22 +923,37 @@ function handleFiles(files) {
     arr.forEach(file => {
         const reader = new FileReader();
         reader.onload = e => {
-            uploadedFiles.push({ file, dataUrl: e.target.result, id: Date.now() + Math.random(), status: 'pending' });
+            uploadedFiles.push({ 
+                file, 
+                dataUrl: e.target.result, 
+                id: Date.now() + Math.random(), 
+                status: 'pending',
+                newName: null,
+                hasFlare: false
+            });
             renderPreviews();
+        };
+        reader.onerror = () => {
+            log(logEl, `Erreur lecture: ${file.name}`, 'error');
         };
         reader.readAsDataURL(file);
     });
     log(logEl, `${arr.length} image(s) uploadée(s)`, 'ok');
 }
 
+
 function renderPreviews() {
     previewGrid.innerHTML = '';
     uploadedFiles.forEach(item => {
         const card = document.createElement('div');
         card.className = 'preview-card';
+        
+        const flareBadge = item.hasFlare ? '<span class="lens-flare-badge">☀️ FLARE</span>' : '';
+        
         card.innerHTML = `
             <img src="${item.dataUrl}" alt="${item.file.name}">
-            <span class="status ${item.status}">${item.status === 'pending' ? 'En attente' : (item.status === 'processing' ? 'Traitement' : 'Terminé')}</span>
+            ${flareBadge}
+            <span class="status ${item.status}">${item.status === 'pending' ? 'En attente' : (item.status === 'processing' ? 'Traitement' : item.status === 'error' ? 'Erreur' : 'Terminé')}</span>
             <div class="info">
                 <div class="old-name">${item.file.name}</div>
                 <div class="new-name">${item.newName || '—'}</div>
@@ -619,8 +963,9 @@ function renderPreviews() {
         previewGrid.appendChild(card);
     });
     updateStats();
-    processBtn.disabled = uploadedFiles.length === 0;
+    processBtn.disabled = uploadedFiles.length === 0 || uploadedFiles.every(i => i.status === 'completed');
 }
+
 
 function updateStats() {
     document.getElementById('stat-total').textContent = uploadedFiles.length;
@@ -630,131 +975,240 @@ function updateStats() {
     document.getElementById('downloadZip').disabled = uploadedFiles.filter(i => i.status === 'completed').length === 0;
 }
 
+
 processBtn.addEventListener('click', async () => {
     const pattern = document.getElementById('namingPattern').value;
     log(logEl, `Traitement de ${uploadedFiles.length} image(s)`, 'info');
 
+
     const usedNames = new Set();
+
 
     for (let idx = 0; idx < uploadedFiles.length; idx++) {
         const item = uploadedFiles[idx];
+        
+        if (item.status === 'completed') continue;
+        
         item.status = 'processing';
         renderPreviews();
         const pb = document.getElementById('pb-' + item.id);
+        if (pb) pb.style.width = '10%';
 
-        log(logEl, `Analyse de ${item.file.name}...`, 'info');
+
+        log(logEl, `[${idx+1}/${uploadedFiles.length}] Analyse de ${item.file.name}...`, 'info');
+
 
         const img = new Image();
-        await new Promise(r => { img.onload = r; img.src = item.dataUrl; });
+        img.crossOrigin = 'anonymous';
+        
+        try {
+            await new Promise((resolve, reject) => {
+                img.onload = resolve;
+                img.onerror = reject;
+                img.src = item.dataUrl;
+            });
+        } catch (e) {
+            log(logEl, `  → Erreur chargement image: ${e.message}`, 'error');
+            item.status = 'error';
+            renderPreviews();
+            continue;
+        }
+        
+        if (pb) pb.style.width = '25%';
+
 
         let objects = [];
         let classes = [];
         let ocrText = '';
         let colorName = 'inconnue';
+        let flareResult = { detected: false };
+
 
         try {
             if (models.cocossd) {
-                const predictions = await models.cocossd.detect(img);
-                objects = predictions.map(p => p.class);
-                log(logEl, `  → Objets: ${objects.join(', ') || '(aucun)'}`, 'ok');
+                try {
+                    const predictions = await models.cocossd.detect(img);
+                    objects = predictions.map(p => p.class);
+                    log(logEl, `  → Objets: ${objects.join(', ') || '(aucun)'}`, 'ok');
+                } catch (e) {
+                    log(logEl, `  → COCO-SSD erreur: ${e.message}`, 'warn');
+                    objects = ['objet-' + (idx % 10)];
+                }
             } else {
-                objects = getFallbackObjects(idx);
+                objects = ['objet-' + (idx % 10)];
                 log(logEl, `  → Objets (dégradé): ${objects.join(', ')}`, 'warn');
             }
+            
+            if (pb) pb.style.width = '45%';
+
 
             if (models.mobilenet) {
-                const predictions = await models.mobilenet.classify(img);
-                classes = predictions.map(p => p.className);
-                log(logEl, `  → Classification: ${classes.slice(0, 3).join(', ')}`, 'ok');
+                try {
+                    const predictions = await models.mobilenet.classify(img);
+                    classes = predictions.map(p => p.className);
+                    log(logEl, `  → Classification: ${classes.slice(0, 3).join(', ')}`, 'ok');
+                } catch (e) {
+                    log(logEl, `  → MobileNet erreur: ${e.message}`, 'warn');
+                }
             }
+            
+            if (pb) pb.style.width = '60%';
+
 
             if (tesseractWorker) {
                 try {
                     const ocrTimeout = new Promise((_, rej) => setTimeout(() => rej(new Error('Timeout')), 12000));
                     const result = await Promise.race([tesseractWorker.recognize(img), ocrTimeout]);
                     ocrText = result.data.text.trim();
-                    if (ocrText) log(logEl, `  → Texte: "${ocrText.replace(/\n/g, ' ').slice(0, 80)}"`, 'ok');
+                    if (ocrText) {
+                        log(logEl, `  → Texte: "${ocrText.replace(/\n/g, ' ').slice(0, 80)}"`, 'ok');
+                    } else {
+                        log(logEl, `  → Aucun texte détecté`, 'info');
+                    }
                 } catch (ocrErr) {
                     log(logEl, `  → OCR indisponible: ${ocrErr.message}`, 'warn');
                 }
             }
+            
+            if (pb) pb.style.width = '75%';
+
 
             colorName = await extractDominantColor(img);
             log(logEl, `  → Couleur: ${colorName}`, 'ok');
+            
+            if (pb) pb.style.width = '85%';
+
+
+            try {
+                const canvas = document.createElement('canvas');
+                canvas.width = Math.min(img.width, 400);
+                canvas.height = Math.min(img.height, 400);
+                const ctx = canvas.getContext('2d');
+                ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+                const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+                flareResult = detectLensFlare(imageData);
+                if (flareResult.detected) {
+                    log(logEl, `  → ☀️ Flare optique détecté! (${(flareResult.ratio*100).toFixed(1)}% pixels brillants)`, 'warn');
+                    item.hasFlare = true;
+                } else {
+                    log(logEl, `  → Pas de flare optique`, 'ok');
+                }
+            } catch (flareErr) {
+                log(logEl, `  → Détection flare erreur: ${flareErr.message}`, 'warn');
+            }
+            
+            if (pb) pb.style.width = '95%';
+
+
         } catch (e) {
-            log(logEl, `  → Erreur analyse: ${e.message}`, 'warn');
-            if (!objects.length) objects = getFallbackObjects(idx);
+            log(logEl, `  → Erreur analyse globale: ${e.message}`, 'error');
+            if (!objects.length) objects = ['objet'];
         }
+
+
+        const category = getCategory(objects);
+        log(logEl, `  → Categorie: ${category}`, 'ok');
 
         let brand = '';
         if (ocrText) {
-            const words = ocrText.match(/\b[A-Z][a-z]+\b/g) || [];
+            const words = ocrText.match(/\b[A-Z][a-zA-Z]{2,}\b/g) || [];
             brand = words[0] || '';
         }
-        if (!brand && classes.length > 0) {
-            const top = classes[0];
-            if (/watch|phone|camera|shoe|bag|bottle|glass|book|laptop|headphone|sunglass|bicycle|car|tv|monitor|keyboard/i.test(top)) brand = top;
-        }
-        if (!brand) brand = getFallbackBrand(idx);
+        if (!brand) brand = getBrandForCategory(category, idx);
+        log(logEl, `  → Marque: ${brand}`, 'ok');
 
-        let model = '';
-        if (classes.length > 0) {
-            model = classes[0].toLowerCase()
-                .replace(/[^a-z0-9]+/g, '-')
-                .replace(/^-|-$/g, '')
-                .slice(0, 30);
-        }
-        if (!model) model = 'v' + (idx + 1);
+        let model = getDescriptor(objects, idx);
+        log(logEl, `  → Descripteur: ${model}`, 'ok');
 
-        let context = objects[0] || '';
-        if (!context) context = getFallbackContext(idx);
+        let context = objects[0] || 'produit';
         context = context.toLowerCase().replace(/[^a-z0-9]+/g, '-');
 
-        const ext = item.file.name.split('.').pop();
+
+        const flareSuffix = flareResult.detected ? 'flare' : '';
+
+
+        const ext = item.file.name.split('.').pop().toLowerCase();
+        
         let newName = pattern
-            .replace('{marque}', brand.toLowerCase())
-            .replace('{modele}', model)
-            .replace('{couleur}', colorName)
-            .replace('{contexte}', context)
+            .replace('{marque}', brand.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, ''))
+            .replace('{modele}', model.normalize('NFD').replace(/[\u0300-\u036f]/g, ''))
+            .replace('{couleur}', colorName.normalize('NFD').replace(/[\u0300-\u036f]/g, ''))
+            .replace('{contexte}', context.normalize('NFD').replace(/[\u0300-\u036f]/g, ''))
+            .replace('{flare}', flareSuffix)
             .replace(/[^a-z0-9-]/g, '')
             .replace(/-+/g, '-')
             .replace(/^-|-$/g, '') + '.' + ext;
 
-        let counter = 1;
-        while (usedNames.has(newName)) {
+
+        if (usedNames.has(newName)) {
             const base = newName.replace('.' + ext, '');
-            newName = base + '-' + counter + '.' + ext;
-            counter++;
+            let counter = 1;
+            let candidate = base + '-' + counter + '.' + ext;
+            while (usedNames.has(candidate)) {
+                counter++;
+                candidate = base + '-' + counter + '.' + ext;
+            }
+            newName = candidate;
         }
         usedNames.add(newName);
 
-        item.newName = newName;
 
-        for (let p = 0; p <= 100; p += 25) {
-            if (pb) pb.style.width = p + '%';
-            await new Promise(r => setTimeout(r, 30));
-        }
+        item.newName = newName;
+        if (pb) pb.style.width = '100%';
+
 
         item.status = 'completed';
         renderPreviews();
-        log(logEl, `  ✅ Renommé en ${newName}`, 'ok');
+        log(logEl, `  ✅ ${item.file.name} → ${newName}`, 'ok');
     }
+
 
     log(logEl, 'Traitement terminé.', 'ok');
 });
+
 
 clearBtn.addEventListener('click', () => {
     uploadedFiles = [];
     previewGrid.innerHTML = '';
     logEl.innerHTML = '';
     updateStats();
+    processBtn.disabled = true;
 });
 
-document.getElementById('downloadZip').addEventListener('click', () => {
-    const count = uploadedFiles.filter(i => i.status === 'completed').length;
-    log(logEl, `Téléchargement ZIP (${count} fichiers)`, 'ok');
-    alert('ZIP simulé prêt !');
+
+document.getElementById('downloadZip').addEventListener('click', async () => {
+    const completed = uploadedFiles.filter(i => i.status === 'completed');
+    if (completed.length === 0) return;
+    
+    log(logEl, `Création du ZIP (${completed.length} fichiers)...`, 'info');
+    
+    try {
+        const zip = new JSZip();
+        const folder = zip.folder("xtramagical-renamed");
+        
+        for (const item of completed) {
+            const response = await fetch(item.dataUrl);
+            const blob = await response.blob();
+            folder.file(item.newName, blob);
+        }
+        
+        const content = await zip.generateAsync({ type: 'blob' });
+        const url = URL.createObjectURL(content);
+        
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'xtramagical-images.zip';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        
+        log(logEl, `ZIP téléchargé: ${completed.length} fichiers`, 'ok');
+    } catch (e) {
+        log(logEl, `Erreur ZIP: ${e.message}`, 'error');
+    }
 });
+
 
 const simplePrompt = document.getElementById('simplePrompt');
 const promptStyle = document.getElementById('promptStyle');
@@ -766,6 +1220,7 @@ const finalPromptEl = document.getElementById('finalPrompt');
 const imageResultEl = document.getElementById('imageResult');
 const logGenEl = document.getElementById('logGen');
 
+
 const ENHANCERS = {
     'cinematic': 'cinematic lighting, dramatic atmosphere, golden hour, film grain, anamorphic lens, shallow depth of field, 8K, ultra detailed, award winning photography',
     'photorealistic': 'hyperrealistic, shot on Canon EOS R5, 85mm f/1.4, natural lighting, RAW photo, 8K, incredibly detailed, sharp focus, professional photography',
@@ -774,14 +1229,17 @@ const ENHANCERS = {
     '3d-render': '3D render, octane render, ray tracing, subsurface scattering, physically based rendering, unreal engine 5, hyper detailed, studio lighting'
 };
 
+
 enhanceBtn.addEventListener('click', async () => {
     const prompt = simplePrompt.value.trim();
     if (!prompt) { alert('Saisissez un prompt'); return; }
+
 
     log(logGenEl, `Prompt: "${prompt}"`, 'info');
     promptOriginalEl.textContent = prompt;
     enhanceBtn.disabled = true;
     enhanceBtn.textContent = 'Appel Pollinations.ai...';
+
 
     try {
         const stylePrompt = ENHANCERS[promptStyle.value];
@@ -792,6 +1250,7 @@ enhanceBtn.addEventListener('click', async () => {
         let enhanced = await res.text();
         enhanced = enhanced.replace(/^["']|["']$/g, '').trim();
         if (!enhanced) enhanced = `${prompt}, ${stylePrompt}`;
+
 
         promptEnhancedEl.textContent = enhanced;
         finalPromptEl.value = enhanced;
@@ -805,21 +1264,26 @@ enhanceBtn.addEventListener('click', async () => {
         log(logGenEl, `Fallback local: ${e.message}`, 'warn');
     }
 
+
     enhanceBtn.disabled = false;
-    enhanceBtn.textContent = 'Améliorer le prompt (LLM)';
+    enhanceBtn.textContent = '✨ Améliorer le prompt (LLM)';
 });
+
 
 generateBtn.addEventListener('click', async () => {
     const finalPrompt = finalPromptEl.value.trim();
     if (!finalPrompt) return;
+
 
     log(logGenEl, 'Génération via Pollinations.ai...', 'info');
     generateBtn.disabled = true;
     generateBtn.textContent = 'Appel API...';
     imageResultEl.innerHTML = '<p style="color:var(--text-secondary);margin-top:20px;">Génération en cours...</p>';
 
+
     const imgUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(finalPrompt)}?width=1024&height=1024&seed=${Math.floor(Math.random() * 9999)}&nologo=true`;
     const img = new Image();
+    img.crossOrigin = 'anonymous';
     img.style.width = '100%';
     img.style.borderRadius = '10px';
     img.onload = () => {
@@ -831,17 +1295,18 @@ generateBtn.addEventListener('click', async () => {
             <a href="${imgUrl}" target="_blank" style="display:inline-block;margin-top:10px;color:var(--accent-gold);text-decoration:none;font-weight:600;">Voir l'image</a>
         `;
         generateBtn.disabled = false;
-        generateBtn.textContent = 'Générer l\'image';
+        generateBtn.textContent = '🎨 Générer l\'image';
         log(logGenEl, 'Image générée via Pollinations.ai', 'ok');
     };
     img.onerror = () => {
-        imageResultEl.innerHTML = `<p style="color:#ef4444;margin-top:20px;">Erreur: impossible de charger l'image. Vérifie ta connexion.</p>`;
+        imageResultEl.innerHTML = `<p style="color:var(--status-error);margin-top:20px;">Erreur: impossible de charger l'image. Vérifie ta connexion.</p>`;
         generateBtn.disabled = false;
-        generateBtn.textContent = 'Générer l\'image';
-        log(logGenEl, 'Erreur génération image', 'warn');
+        generateBtn.textContent = '🎨 Générer l\'image';
+        log(logGenEl, 'Erreur génération image', 'error');
     };
     img.src = imgUrl;
 });
+
 
 log(logEl, 'Système prêt. Commencez par uploader des images.', 'ok');
 log(logGenEl, 'Générateur prêt. Saisissez un prompt.', 'ok');
