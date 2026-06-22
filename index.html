@@ -596,25 +596,170 @@ let degraded = false;
 })();
 
 
-function getFallbackObjects(index) {
-    const list = [
-        'produit', 'objet', 'article', 'photo', 'image',
-        'element', 'accessoire', 'equipement', 'document', 'illustration'
-    ];
-    const seed = (index * 7 + 3) % list.length;
-    return [list[seed]];
+const CATEGORY_MAP = {
+    person: 'persona', bicycle: 'vehicule', car: 'vehicule',
+    motorcycle: 'vehicule', airplane: 'vehicule', bus: 'vehicule',
+    train: 'vehicule', truck: 'vehicule', boat: 'vehicule',
+    'traffic light': 'signal', 'fire hydrant': 'signal',
+    'stop sign': 'signal', 'parking meter': 'signal',
+    bench: 'mobilier', chair: 'mobilier', couch: 'mobilier',
+    bed: 'mobilier', 'dining table': 'mobilier',
+    bird: 'animal', cat: 'animal', dog: 'animal', horse: 'animal',
+    sheep: 'animal', cow: 'animal', elephant: 'animal',
+    bear: 'animal', zebra: 'animal', giraffe: 'animal',
+    backpack: 'accessoire', umbrella: 'accessoire', handbag: 'accessoire',
+    tie: 'accessoire', suitcase: 'accessoire',
+    frisbee: 'sport', skis: 'sport', snowboard: 'sport',
+    'sports ball': 'sport', kite: 'sport', 'baseball bat': 'sport',
+    'baseball glove': 'sport', skateboard: 'sport', surfboard: 'sport',
+    'tennis racket': 'sport',
+    bottle: 'boisson', 'wine glass': 'boisson', cup: 'boisson',
+    fork: 'cuisine', knife: 'cuisine', spoon: 'cuisine', bowl: 'cuisine',
+    banana: 'alimentation', apple: 'alimentation', sandwich: 'alimentation',
+    orange: 'alimentation', broccoli: 'alimentation', carrot: 'alimentation',
+    'hot dog': 'alimentation', pizza: 'alimentation', donut: 'alimentation',
+    cake: 'alimentation',
+    'potted plant': 'plant',
+    toilet: 'sanitaire', sink: 'sanitaire',
+    tv: 'electronique', laptop: 'electronique', mouse: 'electronique',
+    remote: 'electronique', keyboard: 'electronique', 'cell phone': 'electronique',
+    microwave: 'electromenager', oven: 'electromenager',
+    toaster: 'electromenager', refrigerator: 'electromenager',
+    book: 'papeterie', scissors: 'papeterie',
+    vase: 'decoration', clock: 'horlogerie',
+    'teddy bear': 'jouet',
+    'hair drier': 'soin', toothbrush: 'soin'
+};
+
+const BRAND_NAMES = {
+    persona: ['StudioPro', 'PortraitMax', 'FacePrime', 'ModeCraft', 'ChicShot', 'StyleLab', 'LensPro', 'PhotoElite'],
+    vehicule: ['AutoPrime', 'SpeedMax', 'Transway', 'DrivePro', 'MotoCraft', 'VroomMax', 'TurboPro', 'RoadMaster'],
+    signal: ['UrbanPro', 'CityMax', 'MetroPrime', 'StreetCraft', 'SignalPro', 'Crossway', 'TrafficLab', 'VoiePro'],
+    mobilier: ['MaisonPro', 'DecoMax', 'ComfortHome', 'MeubleCraft', 'HabitatPlus', 'ChicHome', 'LoungePro', 'RelaxMax'],
+    animal: ['Animalia', 'WildLife', 'FaunaPro', 'ZooMax', 'PetPrime', 'NatureCraft', 'BioShot', 'Animalis'],
+    accessoire: ['ModeMax', 'StylePro', 'UrbanBag', 'ChicLab', 'TrendCraft', 'WearPrime', 'LuxePro', 'VogueMax'],
+    sport: ['SportMax', 'FitPro', 'GameOn', 'MoveCraft', 'AthlonPro', 'PlayPrime', 'GymMax', 'ActionShot'],
+    boisson: ['VinumMax', 'BrewCraft', 'SipPro', 'BaristaMax', 'DrinkLab', 'ToastPrime', 'CafePro', 'HydraMax'],
+    cuisine: ['CuisinePro', 'ChefMax', 'TablePrime', 'CookLab', 'KitchenCraft', 'GastroMax', 'PrepPro', 'OvenPlus'],
+    alimentation: ['GourmetPro', 'SaveurMax', 'TastePrime', 'ChefCraft', 'DelicePro', 'FoodMax', 'Epicure', 'BistroPrime'],
+    plant: ['FloraMax', 'GreenPro', 'BioCraft', 'EcoPrime', 'GardenPlus', 'NaturelLab', 'Plantis', 'TerrePro'],
+    sanitaire: ['AquaPro', 'CleanMax', 'HygieneCraft', 'Sanilab', 'FreshPlus', 'ToiletPro', 'BainMax', 'EauPrime'],
+    electronique: ['TechPro', 'DigiCore', 'NovaTech', 'ByteCraft', 'LogicFlow', 'ChipMax', 'PixelPro', 'SmartCore'],
+    electromenager: ['ElectroMax', 'PowerLine', 'WattPro', 'VoltCraft', 'EnergyPlus', 'HomeTech', 'CurrentPro', 'MegaWatt'],
+    papeterie: ['PaperMax', 'WritePro', 'InkCraft', 'NotePrime', 'BookLab', 'PagePlus', 'ScribPro', 'FolioMax'],
+    decoration: ['ArtMax', 'DecorPro', 'StyleCraft', 'HomeLab', 'ChicPlus', 'ElegancePro', 'OrneMax', 'LuxeHome'],
+    jouet: ['PlayMax', 'FunPro', 'ToyPrime', 'KidsCraft', 'GameLab', 'JouetPlus', 'AmusePro', 'HappyMax'],
+    soin: ['BeautyMax', 'GroomPro', 'FreshPrime', 'CareLab', 'SantePro', 'BodyCraft', 'PureMax', 'SoinPro'],
+    horlogerie: ['TimePro', 'WatchMax', 'ClockCraft', 'TempoLab', 'HourPlus', 'ChronoPro', 'TicTac', 'MontrePrime']
+};
+
+const OBJECT_DESCRIPTORS = {
+    person: ['portrait', 'silhouette', 'figure', 'visage', 'profil'],
+    bicycle: ['velo', 'bicyclette', 'cycle', 'cyclisme', 'pedale'],
+    car: ['voiture', 'automobile', 'vehicule', 'coupe', 'berline'],
+    motorcycle: ['moto', 'motocyclette', 'deux-roues', 'scooter', 'custom'],
+    airplane: ['avion', 'aeronef', 'jet', 'aile', 'vol'],
+    bus: ['bus', 'autobus', 'car', 'transport', 'navette'],
+    train: ['train', 'rame', 'wagon', 'locomotive', 'rail'],
+    truck: ['camion', 'poids-lourd', 'remorque', 'cargo', 'transporteur'],
+    boat: ['bateau', 'navire', 'voilier', 'embarcation', 'marine'],
+    'traffic light': ['signal', 'feu', 'semaphore', 'tricolore', 'carrefour'],
+    'fire hydrant': ['bouche-incendie', 'borne', 'hydrant', 'secours', 'incendie'],
+    'stop sign': ['stop', 'panneau', 'signalisation', 'arret', 'circulation'],
+    'parking meter': ['parcmètre', 'stationnement', 'horodateur', 'parking', 'payant'],
+    bench: ['banc', 'assis', 'repos', 'parc', 'siege'],
+    chair: ['chaise', 'siege', 'fauteuil', 'assise', 'dossier'],
+    couch: ['canape', 'divan', 'sofa', 'salon', 'rembourre'],
+    bed: ['lit', 'couchette', 'dormir', 'matelas', 'chambre'],
+    'dining table': ['table', 'manger', 'repas', 'diner', 'plateau'],
+    bird: ['oiseau', 'volatile', 'plume', 'aile', 'passereau'],
+    cat: ['chat', 'felin', 'matou', 'miaou', 'domestique'],
+    dog: ['chien', 'canin', 'toutou', 'croc', 'fidele'],
+    horse: ['cheval', 'coursier', 'equide', 'selle', 'crin'],
+    sheep: ['mouton', 'brebis', 'ovin', 'laine', 'troupeau'],
+    cow: ['vache', 'bovin', 'veau', 'lait', 'herbe'],
+    elephant: ['elephant', 'pachyderme', 'defense', 'trompe', 'savane'],
+    bear: ['ours', 'plantigrade', 'mammifere', 'bruin', 'fourrure'],
+    zebra: ['zebre', 'equide', 'rayure', 'savane', 'afrique'],
+    giraffe: ['girafe', 'girafide', 'long-cou', 'tache', 'savane'],
+    backpack: ['sac-a-dos', 'sac', 'randonnee', 'ecolier', 'transport'],
+    umbrella: ['parapluie', 'pluie', 'ombrelle', 'protection', 'intemperie'],
+    handbag: ['sac-a-main', 'maroquinerie', 'accessoire', 'bandouliere', 'cuir'],
+    tie: ['cravate', 'noeud', 'costume', 'habille', 'elegance'],
+    suitcase: ['valise', 'bagage', 'voyage', 'roulette', 'transport'],
+    frisbee: ['frisbee', 'disque', 'lancer', 'jeu', 'volant'],
+    skis: ['ski', 'neige', 'glisse', 'piste', 'alpin'],
+    snowboard: ['snowboard', 'planche', 'neige', 'glisse', 'freestyle'],
+    'sports ball': ['ballon', 'balle', 'sport', 'jeu', 'ronde'],
+    kite: ['cerf-volant', 'vent', 'vol', 'couleur', 'fil'],
+    'baseball bat': ['batte', 'baseball', 'frappe', 'bois', 'ligne'],
+    'baseball glove': ['gant', 'baseball', 'attraper', 'cuir', 'lancer'],
+    skateboard: ['skateboard', 'planche', 'roulettes', 'street', 'trick'],
+    surfboard: ['surf', 'planche', 'vague', 'ocean', 'glisse'],
+    'tennis racket': ['raquette', 'tennis', 'filet', 'corde', 'service'],
+    bottle: ['bouteille', 'boisson', 'verre', 'liquide', 'contenant'],
+    'wine glass': ['verre-a-vin', 'vin', 'degustation', 'cristal', 'pied'],
+    cup: ['tasse', 'gobelet', 'boisson', 'cafe', 'the'],
+    fork: ['fourchette', 'couvert', 'pique', 'manger', 'dente'],
+    knife: ['couteau', 'lame', 'tranchant', 'decouper', 'coutellerie'],
+    spoon: ['cuillere', 'cuiller', 'soupe', 'manger', 'couvert'],
+    bowl: ['bol', 'saladier', 'contenant', 'soupe', 'cereales'],
+    banana: ['banane', 'fruit', 'jaune', 'tropical', 'regime'],
+    apple: ['pomme', 'fruit', 'rouge', 'vert', 'verger'],
+    sandwich: ['sandwich', 'garniture', 'pain', 'jambon', 'fromage'],
+    orange: ['orange', 'fruit', 'agrume', 'jus', 'vitamine'],
+    broccoli: ['brocoli', 'legume', 'vert', 'crucifere', 'sante'],
+    carrot: ['carotte', 'legume', 'orange', 'racine', 'crudite'],
+    'hot dog': ['hot-dog', 'saucisse', 'pain', 'snack', 'fast-food'],
+    pizza: ['pizza', 'napolitaine', 'cuite', 'mozzarella', 'italienne'],
+    donut: ['donut', 'beignet', 'sucre', 'glace', 'patisserie'],
+    cake: ['gateau', 'patisserie', 'sucre', 'creme', 'anniversaire'],
+    'potted plant': ['plante', 'pot', 'vert', 'feuille', 'interieur'],
+    toilet: ['toilette', 'wc', 'sanitaire', 'cuvette', 'cabinet'],
+    sink: ['evier', 'lavabo', 'robinet', 'eau', 'vaisselle'],
+    tv: ['television', 'ecran', 'tele', 'diffusion', 'emission'],
+    laptop: ['ordinateur', 'portable', 'notebook', 'pc', 'ecran'],
+    mouse: ['souris', 'peripherique', 'pointeur', 'clic', 'optique'],
+    remote: ['telecommande', 'zapper', 'infrarouge', 'bouton', 'controle'],
+    keyboard: ['clavier', 'taper', 'saisie', 'lettres', 'dactylo'],
+    'cell phone': ['telephone', 'mobile', 'smartphone', 'portable', 'ecran'],
+    microwave: ['micro-ondes', 'cuisson', 'chauffer', 'four', 'rapide'],
+    oven: ['four', 'cuisson', 'cuire', 'gastronomie', 'chaleur'],
+    toaster: ['grille-pain', 'toast', 'dore', 'petit-dejeuner', 'pain'],
+    refrigerator: ['frigo', 'refrigerateur', 'froid', 'conserve', 'cuisine'],
+    book: ['livre', 'lecture', 'page', 'couverture', 'roman'],
+    scissors: ['ciseaux', 'couper', 'lame', 'decoupage', 'couture'],
+    vase: ['vase', 'fleur', 'decoratif', 'ceramique', 'contenant'],
+    clock: ['horloge', 'pendule', 'temps', 'aiguille', 'cadran'],
+    'teddy bear': ['ours-en-peluche', 'peluche', 'nounours', 'doudou', 'calin'],
+    'hair drier': ['seche-cheveux', 'cheveux', 'coiffage', 'souffle', 'chaud'],
+    toothbrush: ['brosse-a-dents', 'dents', 'hygiene', 'brossage', 'dentifrice']
+};
+
+const FALLBACK_CATEGORIES = ['electronique', 'accessoire', 'mobilier', 'alimentation', 'sport', 'vehicule', 'cuisine', 'plant'];
+
+function getCategory(objects) {
+    for (const obj of objects) {
+        const key = obj.toLowerCase();
+        if (CATEGORY_MAP[key]) return CATEGORY_MAP[key];
+    }
+    return FALLBACK_CATEGORIES[Math.floor(Math.random() * FALLBACK_CATEGORIES.length)];
 }
 
-
-function getFallbackBrand(index) {
-    const list = ['Nike', 'Adidas', 'Apple', 'Sony', 'Samsung', 'Canon', 'Lego', 'Dior', 'Louis', 'H&M'];
-    return list[(index * 13 + 7) % list.length];
+function getBrandForCategory(category, seed) {
+    const brands = BRAND_NAMES[category];
+    if (!brands) return 'ProMax';
+    return brands[(seed * 13 + 7) % brands.length];
 }
 
-
-function getFallbackContext(index) {
-    const list = ['produit', 'portrait', 'paysage', 'catalogue', 'studio', 'exterieur', 'macro', 'groupe'];
-    return list[(index * 3 + 5) % list.length];
+function getDescriptor(objects, seed) {
+    for (const obj of objects) {
+        const key = obj.toLowerCase();
+        const descs = OBJECT_DESCRIPTORS[key];
+        if (descs) return descs[(seed * 3 + 5) % descs.length];
+    }
+    const fallbackDescs = ['produit', 'objet', 'article', 'photo', 'image'];
+    return fallbackDescs[(seed * 7 + 3) % fallbackDescs.length];
 }
 
 
@@ -887,10 +1032,10 @@ processBtn.addEventListener('click', async () => {
                     log(logEl, `  → Objets: ${objects.join(', ') || '(aucun)'}`, 'ok');
                 } catch (e) {
                     log(logEl, `  → COCO-SSD erreur: ${e.message}`, 'warn');
-                    objects = getFallbackObjects(idx);
+                    objects = ['objet-' + (idx % 10)];
                 }
             } else {
-                objects = getFallbackObjects(idx);
+                objects = ['objet-' + (idx % 10)];
                 log(logEl, `  → Objets (dégradé): ${objects.join(', ')}`, 'warn');
             }
             
@@ -957,34 +1102,25 @@ processBtn.addEventListener('click', async () => {
 
         } catch (e) {
             log(logEl, `  → Erreur analyse globale: ${e.message}`, 'error');
-            if (!objects.length) objects = getFallbackObjects(idx);
+            if (!objects.length) objects = ['objet'];
         }
 
+
+        const category = getCategory(objects);
+        log(logEl, `  → Categorie: ${category}`, 'ok');
 
         let brand = '';
         if (ocrText) {
             const words = ocrText.match(/\b[A-Z][a-zA-Z]{2,}\b/g) || [];
             brand = words[0] || '';
         }
-        if (!brand && classes.length > 0) {
-            const top = classes[0];
-            if (/watch|phone|camera|shoe|bag|bottle|glass|book|laptop|headphone|sunglass|bicycle|car|tv|monitor|keyboard/i.test(top)) brand = top;
-        }
-        if (!brand) brand = getFallbackBrand(idx);
+        if (!brand) brand = getBrandForCategory(category, idx);
+        log(logEl, `  → Marque: ${brand}`, 'ok');
 
+        let model = getDescriptor(objects, idx);
+        log(logEl, `  → Descripteur: ${model}`, 'ok');
 
-        let model = '';
-        if (classes.length > 0) {
-            model = classes[0].toLowerCase()
-                .replace(/[^a-z0-9]+/g, '-')
-                .replace(/^-|-$/g, '')
-                .slice(0, 30);
-        }
-        if (!model) model = 'v' + (idx + 1);
-
-
-        let context = objects[0] || '';
-        if (!context) context = getFallbackContext(idx);
+        let context = objects[0] || 'produit';
         context = context.toLowerCase().replace(/[^a-z0-9]+/g, '-');
 
 
